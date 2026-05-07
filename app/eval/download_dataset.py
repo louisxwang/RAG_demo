@@ -23,6 +23,11 @@ def download(dataset: str = DEFAULT_KAGGLE_DATASET, out_dir: str = "data/kaggle_
     """
     path = kagglehub.dataset_download(dataset)
     src = Path(path)
+    # Some Kaggle datasets (including the default one here) place PDFs under a "Pdf/" subfolder.
+    # Return the directory that actually contains the PDFs so it can be fed directly to ingest/eval scripts.
+    pdf_dir = src / "Pdf"
+    if pdf_dir.exists() and pdf_dir.is_dir():
+        src = pdf_dir
     dst = Path(out_dir)
     dst.mkdir(parents=True, exist_ok=True)
 

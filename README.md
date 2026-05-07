@@ -77,22 +77,23 @@ You can also use the belowing dataset to quickly start a demo.
 
 Download PDFs (Kaggle)
 
-```bash
-python -m app.eval.download_dataset
+```powershell
+$env:CACHE_PATH = (python -m app.eval.download_dataset).Trim()
 ```
 
-It prints the local cache directory path. Use that path below.
+It prints the local directory path containing the PDFs (for this dataset, it will include the `Pdf/` subfolder). Use that path for below.
+Note the `$env:CACHE_PATH =` syntax, it can automatically set the enviroment variable so you don't need to copy the path, but you need to run it in a powershell, not cmd.exe
 
 Build eval dataset (synthetic QA + filtering)
 
-```bash
-python -m app.eval.build_eval_set --pdf-root "<CACHE_PATH>" --out eval/eval_set.jsonl --sample-n-files 20 --n-generations 2
+```powershell
+python -m app.eval.build_eval_set --pdf-root "$env:CACHE_PATH" --out eval/eval_set.jsonl --sample-n-files 20 --n-generations 2
 ```
 
 Ingest the PDFs into your FAISS index
 
-```bash
-python -m app.rag.ingest --path "<CACHE_PATH>" --index-dir storage
+```powershell
+python -m app.rag.ingest --path "$env:CACHE_PATH" --index-dir storage
 ```
 
 This creates:
