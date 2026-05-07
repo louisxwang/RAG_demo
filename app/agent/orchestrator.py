@@ -39,11 +39,17 @@ class Orchestrator:
             except ToolError:
                 steps.append("tool: calculator failed (unsupported expression)")
 
-        retrieved = self.retriever.search(question)
-        context = [f"[{c.source}] {c.text}" for c in retrieved]
-        steps.append(f"retrieve: {len(context)} chunks")
+        try:
+            retrieved = self.retriever.search(question)
+            context = [f"[{c.source}] {c.text}" for c in retrieved]
+            steps.append(f"retrieve: {len(context)} chunks")
+        except FileNotFoundError:
+            # No index ingested yet → fall back to plain chat (no RAG).
+            retrieved = []
+            context = []
+            steps.append("retrieve: skipped (no index found)")
 
-        context_block = "\n\n".join(context) if context else "(no context found)"
+        context_block = "\n\n".join(context) if context else "(no retrieved context)"
         summary = self.llm.chat(
             [
                 {"role": "system", "content": "Summarize the provided context for answering a user question. Be concise."},

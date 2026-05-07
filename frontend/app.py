@@ -25,6 +25,12 @@ if top and question.strip():
                 data = resp.json()
                 with col1:
                     st.subheader("Answer")
+                    steps = data.get("steps", []) or []
+                    if any("retrieve: skipped (no index found)" in s for s in steps):
+                        st.warning(
+                            "No RAG index found yet. Running in normal chat mode (no database/context retrieval). "
+                            "Run the ingestion step to enable RAG."
+                        )
                     st.write(data.get("answer", ""))
 
                     st.subheader("Retrieved context")
@@ -38,7 +44,7 @@ if top and question.strip():
 
                 with col2:
                     st.subheader("Agent steps")
-                    for s in data.get("steps", []):
+                    for s in steps:
                         st.code(s)
         except Exception as e:  # noqa: BLE001
             st.exception(e)
