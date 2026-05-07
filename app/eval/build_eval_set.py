@@ -182,6 +182,11 @@ def build_eval_set(
                         },
                     ],
                 )
+                # Some models / JSON repair paths may return a list wrapper; normalize to a dict.
+                if isinstance(critique, list):
+                    critique = next((x for x in critique if isinstance(x, dict)), {})
+                if not isinstance(critique, dict):
+                    critique = {}
 
                 def _score(key: str, default: int = 0) -> int:
                     try:
