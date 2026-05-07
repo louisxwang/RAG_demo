@@ -49,16 +49,34 @@ class LLMClient:
 
     def chat(self, messages: list[dict[str, Any]], temperature: float = 0.2) -> str:
         if self.provider == "mock":
+            system_text = "\n".join(
+                str(m.get("content", "")).strip() for m in messages if m.get("role") == "system"
+            ).lower()
             last_user = next(
                 (str(m.get("content", "")).strip() for m in reversed(messages) if m.get("role") == "user"),
                 "",
             )
-            if not last_user:
-                last_user = "Hello! (No user message found.)"
+
+            # The agent uses a 2-call pattern: summarize(context+question) then answer(summary+question).
+            # For mock mode, avoid echoing the entire prompt, otherwise the second call will include the
+            # first call's output and look "duplicated".
+            if "summarize the provided context" in system_text:
+                return "(mock summary) No indexed documents yet, so no retrieved context."
+
+            # Try to extract the real user question from the orchestrator prompt.
+            question = last_user
+            for marker in ("User question:", "Question:"):
+                if marker in question:
+                    question = question.split(marker, 1)[-1].strip()
+                    break
+
+            if not question:
+                question = "Hello! (No user question found.)"
+
             return (
                 "MOCK LLM (no API key configured).\n\n"
-                "I can’t call a real model yet, but your pipeline is wired correctly.\n\n"
-                f"Your last question:\n{last_user}"
+                "RAG retrieval and tool wiring are working, but no real model is configured yet.\n\n"
+                f"User question:\n{question}"
             )
 
         if self.provider == "openai":
