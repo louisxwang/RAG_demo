@@ -21,6 +21,8 @@ class Settings(BaseSettings):
 
     # LLM
     llm_provider: str = "mock"  # mock (no keys) | openai (OpenAI-compatible) | gemini
+
+    # OpenAI (OpenAI-compatible)
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o-mini"
@@ -29,7 +31,8 @@ class Settings(BaseSettings):
     # Gemini (Google Generative Language API)
     gemini_api_key: str | None = None
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
-    gemini_model: str = "gemini-1.5-flash"
+    # Use a "latest" alias to avoid 404s when specific versions are region-limited or renamed.
+    gemini_model: str = "gemini-flash-latest"
 
     # API
     log_level: str = "INFO"

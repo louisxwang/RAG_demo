@@ -1,8 +1,10 @@
-# Enterprise AI Assistant 
-###  A personal demo project (RAG + simple agent) of Louis Wang
+# Enterprise AI Assistant
+
+### A personal demo project (RAG + simple agent) of Louis Wang
 
 The project is developped and tested under Windows 11. 
 Production-style (but intentionally minimal) GenAI project:
+
 - **RAG**: ingest docs → chunk → embed locally → FAISS similarity search
 - **Agent pipeline**: retrieve context → summarize → answer
 - **Tool calling**: simple calculator tool (safe eval)
@@ -19,7 +21,7 @@ python -m venv .venv
 # Windows PowerShell:
 .venv\Scripts\Activate.ps1
 
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 By default, the app runs with `LLM_PROVIDER=mock` (no keys needed) so you can quickly test the full RAG + API + UI flow.
@@ -37,8 +39,10 @@ Or use Gemini:
 ```powershell
 $env:LLM_PROVIDER="gemini"
 $env:GEMINI_API_KEY="YOUR_KEY"
-$env:GEMINI_MODEL="gemini-1.5-flash"
+$env:GEMINI_MODEL="gemini-flash-latest"
 ```
+
+Note: environment variables are scoped to your current shell/session. If you run `uvicorn` and `streamlit` in different terminals, set the LLM env vars in the backend terminal (the one running `uvicorn`) before starting it. The Streamlit UI does not need LLM keys (it only calls the backend; set `BACKEND_URL` only if you changed the backend address/port).
 
 ### Option B: Docker
 
@@ -57,13 +61,14 @@ Gemini example:
 docker run --rm -p 8000:8000 -p 8501:8501 ^
   -e LLM_PROVIDER=gemini ^
   -e GEMINI_API_KEY=YOUR_KEY ^
-  -e GEMINI_MODEL=gemini-1.5-flash ^
+  -e GEMINI_MODEL=gemini-flash-latest ^
   rag-demo
 ```
 
 ## 2) Ingest documents (default example: dataset workflow)
 
 ### Use your data
+
 You can put your own documents under `data/` (you create it) and ingest them:
 
 ```bash
@@ -73,6 +78,7 @@ python -m app.rag.ingest --path data --index-dir storage
 Supported file types: `.txt`, `.md`, `.pdf`
 
 ### Use a dataset for demo
+
 You can also use the belowing dataset to quickly start a demo.
 
 Download PDFs (Kaggle)
@@ -97,10 +103,10 @@ python -m app.rag.ingest --path "$env:CACHE_PATH" --index-dir storage
 ```
 
 This creates:
+
 - `storage/index.faiss`
 - `storage/docstore.json`
 - `storage/meta.json`
-
 
 ## 3) Run
 
@@ -117,6 +123,7 @@ streamlit run frontend/app.py
 ```
 
 Open:
+
 - API docs: `http://localhost:8000/docs`
 - UI: `http://localhost:8501`
 
@@ -128,6 +135,7 @@ curl -X POST http://localhost:8000/query -H "Content-Type: application/json" ^
 ```
 
 ## Design notes (why this shape)
+
 - **FAISS on disk**: keeps retrieval fast and restart-friendly without a database.
 - **Local embeddings**: `sentence-transformers` avoids external embedding calls and cost.
 - **OpenAI-compatible client**: works with OpenAI and many compatible gateways via `OPENAI_BASE_URL`.

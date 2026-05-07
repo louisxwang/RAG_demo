@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 import requests
+from requests import HTTPError
 
 from app.core.config import settings
 
@@ -135,7 +136,16 @@ class LLMClient:
             resp = requests.post(
                 url, params=params, headers=headers, data=json.dumps(payload), timeout=self.timeout
             )
-            resp.raise_for_status()
+            try:
+                resp.raise_for_status()
+            except HTTPError as e:
+                if resp.status_code == 404:
+                    raise ValueError(
+                        "Gemini model was not found (HTTP 404). "
+                        "Try setting GEMINI_MODEL to an available model alias like 'gemini-flash-latest', "
+                        "or check model availability for your region/account."
+                    ) from e
+                raise
             data = resp.json()
             candidates = data.get("candidates") or []
             if not candidates:
