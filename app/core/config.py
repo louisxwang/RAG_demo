@@ -20,11 +20,16 @@ class Settings(BaseSettings):
     top_k: int = 4
 
     # LLM
-    llm_provider: str = "openai"  # openai (OpenAI-compatible)
+    llm_provider: str = "mock"  # mock (no keys) | openai (OpenAI-compatible) | gemini
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o-mini"
     llm_timeout_s: int = 60
+
+    # Gemini (Google Generative Language API)
+    gemini_api_key: str | None = None
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    gemini_model: str = "gemini-1.5-flash"
 
     # API
     log_level: str = "INFO"
