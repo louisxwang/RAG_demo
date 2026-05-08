@@ -13,3 +13,5 @@ storage/
 data/
 eval/
 
+# Credentials and environment variables
+.env

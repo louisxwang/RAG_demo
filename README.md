@@ -47,25 +47,50 @@ $env:GEMINI_MODEL="gemini-flash-latest"
 
 Note: environment variables are scoped to your current shell/session. If you run `uvicorn` and `streamlit` in different terminals, set the LLM env vars in the backend terminal (the one running `uvicorn`) before starting it. The Streamlit UI does not need LLM keys (it only calls the backend; set `BACKEND_URL` only if you changed the backend address/port).
 
-### Option B: Docker
+### Option B: Docker (split services)
 
-```bash
-docker build -t rag-demo .
-docker run --rm -p 8000:8000 -p 8501:8501 ^
-  -e LLM_PROVIDER=openai ^
-  -e OPENAI_API_KEY=YOUR_KEY ^
-  -e OPENAI_MODEL=gpt-4o-mini ^
-  rag-demo
+This repository now provides two Dockerfiles so the backend and frontend run as separate images:
+
+- `Dockerfile.backend` — builds the FastAPI backend (port 8000)
+- `Dockerfile.frontend` — builds the Streamlit frontend (port 8501)
+
+Local development with Docker Compose (recommended):
+
+Create a .env file with
+```
+LLM_PROVIDER=gemini 
+GEMINI_API_KEY=YOUR_KEY
 ```
 
-Gemini example:
 
-```bash
-docker run --rm -p 8000:8000 -p 8501:8501 ^
-  -e LLM_PROVIDER=gemini ^
-  -e GEMINI_API_KEY=YOUR_KEY ^
-  -e GEMINI_MODEL=gemini-flash-latest ^
-  rag-demo
+```powershell
+docker compose up --build
+```
+
+This will start two services and expose ports 8000 and 8501.
+
+Or you can build images individually:
+
+```powershell
+docker build -f Dockerfile.backend -t rag-demo-backend .
+docker build -f Dockerfile.frontend -t rag-demo-frontend .
+```
+
+Run them separately:
+
+```powershell
+docker run --rm -p 8000:8000 -e LLM_PROVIDER=gemini -e GEMINI_API_KEY=YOUR_KEY rag-demo-backend
+docker run --rm -p 8501:8501 -e BACKEND_URL=http://localhost:8000 rag-demo-frontend
+```
+
+Notes:
+- The Streamlit frontend calls the backend API — change `BACKEND_URL` if the backend is not on the default address/port.
+- Keep LLM provider keys and secrets out of image builds; pass them as runtime environment variables or use a secrets manager.
+
+OpenAI backend example(Frontend is the same as above):
+
+```powershell
+docker run --rm -p 8000:8000 -e LLM_PROVIDER=openai -e OPENAI_API_KEY=YOUR_KEY rag-demo-backend
 ```
 
 ## 2) Ingest documents (default example: dataset workflow)
