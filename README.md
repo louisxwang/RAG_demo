@@ -24,6 +24,9 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
+If you have GPU on your machine, you need to manually install torch cuda version in the venv to enbable GPU acceleration.
+Ingestion time for the example dataset is about 8 minutes on CPU (i9 13900) and 6 seconds on GPU (RTX 4080).
+
 By default, the app runs with `LLM_PROVIDER=mock` (no keys needed) so you can quickly test the full RAG + API + UI flow.
 
 To use a real model, set environment variables. Example using OpenAI-compatible API:
