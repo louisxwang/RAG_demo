@@ -172,4 +172,4 @@ curl -X POST http://localhost:8000/query -H "Content-Type: application/json" ^
 ```bash
 python -m app.eval.run_eval --eval-set eval/eval_set.jsonl --out eval/results.jsonl
 ```
-
+Don't forget to set LLM_PROVIDER and API_KEY before running the evaluation.
