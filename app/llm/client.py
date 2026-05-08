@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+import random
 from typing import Any
 
 import requests
@@ -93,10 +95,43 @@ class LLMClient:
             }
 
             log.debug("LLM request provider=openai model=%s base_url=%s", self.model, self.base_url)
-            resp = requests.post(url, headers=headers, data=json.dumps(payload), timeout=self.timeout)
-            resp.raise_for_status()
-            data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            # Retry on transient errors (429/503) with exponential backoff + jitter.
+            max_retries = 6
+            backoff_base = 1.0
+            last_exc = None
+            for attempt in range(1, max_retries + 1):
+                try:
+                    resp = requests.post(url, headers=headers, data=json.dumps(payload), timeout=self.timeout)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    return data["choices"][0]["message"]["content"]
+                except HTTPError as e:
+                    last_exc = e
+                    status = getattr(e.response, "status_code", None)
+                    if status in (429, 503) and attempt < max_retries:
+                        # Honor Retry-After header if provided, else exponential backoff with jitter.
+                        retry_after = None
+                        try:
+                            retry_after = int(e.response.headers.get("Retry-After"))
+                        except Exception:
+                            retry_after = None
+
+                        if retry_after:
+                            sleep_t = retry_after
+                        else:
+                            sleep_t = backoff_base * (2 ** (attempt - 1))
+                            sleep_t = sleep_t + random.uniform(0, 0.5 * sleep_t)
+
+                        log.warning(
+                            "Transient LLM error provider=openai status=%s attempt=%s/%s - sleeping %.1fs then retrying",
+                            status,
+                            attempt,
+                            max_retries,
+                            sleep_t,
+                        )
+                        time.sleep(sleep_t)
+                        continue
+                    raise
 
         if self.provider == "gemini":
             # Gemini's API uses "contents" with roles "user" and "model". This app's messages
@@ -133,19 +168,59 @@ class LLMClient:
             }
 
             log.debug("LLM request provider=gemini model=%s base_url=%s", self.model, self.base_url)
-            resp = requests.post(
-                url, params=params, headers=headers, data=json.dumps(payload), timeout=self.timeout
-            )
-            try:
-                resp.raise_for_status()
-            except HTTPError as e:
-                if resp.status_code == 404:
-                    raise ValueError(
-                        "Gemini model was not found (HTTP 404). "
-                        "Try setting GEMINI_MODEL to an available model alias like 'gemini-flash-latest', "
-                        "or check model availability for your region/account."
-                    ) from e
-                raise
+            # Retry logic for Gemini: retry transient errors (429/503) with exponential backoff + jitter.
+            max_retries = 6
+            backoff_base = 1.0
+            last_exc = None
+            resp = None
+            for attempt in range(1, max_retries + 1):
+                try:
+                    resp = requests.post(
+                        url, params=params, headers=headers, data=json.dumps(payload), timeout=self.timeout
+                    )
+                    resp.raise_for_status()
+                    break
+                except HTTPError as e:
+                    last_exc = e
+                    status = getattr(e.response, "status_code", None)
+                    # If model not found, surface a clear error immediately.
+                    if status == 404:
+                        raise ValueError(
+                            "Gemini model was not found (HTTP 404). "
+                            "Try setting GEMINI_MODEL to an available model alias like 'gemini-flash-latest', "
+                            "or check model availability for your region/account."
+                        ) from e
+
+                    if status in (429, 503) and attempt < max_retries:
+                        retry_after = None
+                        try:
+                            retry_after = int(e.response.headers.get("Retry-After"))
+                        except Exception:
+                            retry_after = None
+
+                        if retry_after:
+                            sleep_t = retry_after
+                        else:
+                            sleep_t = backoff_base * (2 ** (attempt - 1))
+                            sleep_t = sleep_t + random.uniform(0, 0.5 * sleep_t)
+
+                        log.warning(
+                            "Transient LLM error provider=gemini status=%s attempt=%s/%s - sleeping %.1fs then retrying",
+                            status,
+                            attempt,
+                            max_retries,
+                            sleep_t,
+                        )
+                        time.sleep(sleep_t)
+                        continue
+                    # Non-retryable or max attempts reached: re-raise the last HTTPError
+                    raise
+
+            if resp is None:
+                # If we exhausted retries without setting resp, raise the last exception
+                if last_exc:
+                    raise last_exc
+                raise RuntimeError("Failed to get a response from Gemini API")
             data = resp.json()
             candidates = data.get("candidates") or []
             if not candidates:

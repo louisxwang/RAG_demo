@@ -81,7 +81,7 @@ Supported file types: `.txt`, `.md`, `.pdf`
 
 You can also use the belowing dataset to quickly start a demo.
 
-Download PDFs (Kaggle)
+#### Download PDFs (Kaggle)
 
 ```powershell
 $env:CACHE_PATH = (python -m app.eval.download_dataset).Trim()
@@ -90,16 +90,38 @@ $env:CACHE_PATH = (python -m app.eval.download_dataset).Trim()
 It prints the local directory path containing the PDFs (for this dataset, it will include the `Pdf/` subfolder). Use that path for below.
 Note the `$env:CACHE_PATH =` syntax, it can automatically set the enviroment variable so you don't need to copy the path, but you need to run it in a powershell, not cmd.exe
 
-Build eval dataset (synthetic QA + filtering)
+#### Build eval dataset (synthetic QA + filtering)
+
+If your PDFs sometimes fail to extract clean text, it's safer to separate PDF->text extraction from the LLM calls so you don't waste API quota on parsing errors.
+
+Recommended two-step workflow:
+
+1) Preprocess PDFs to text files (local, no API calls)
 
 ```powershell
-python -m app.eval.build_eval_set --pdf-root "$env:CACHE_PATH" --out eval/eval_set.jsonl --sample-n-files 20 --n-generations 2
+python -m app.eval.preprocess_pdfs --pdf-root "$env:CACHE_PATH" --out-dir data/preprocessed_pdf_texts --max-pages 8
 ```
+
+This writes one `.txt` file per PDF in `data/preprocessed_pdf_texts/` with page markers like `PAGE_1:`. Inspect these files and fix/remove PDFs that produced poor extraction before running the LLM stage.
+
+2) Generate QA and critiques with the LLM (uses API keys)
+
+```powershell
+python -m app.eval.build_eval_set --pdf-root "$env:CACHE_PATH" --out eval/eval_set.jsonl --sample-n-files 20 --n-generations 2 --preprocessed-dir data/preprocessed_pdf_texts --sleep-s 1
+```
+
+Notes on tuning:
+- `--sleep-s` inserts a pause between LLM calls; start with 0.5–2s to reduce the chance of hitting rate limits.
+- Reduce `--sample-n-files` and `--n-generations` to test cheaply before scaling up.
+- Make sure `GEMINI_API_KEY` or `OPENAI_API_KEY` is set in your shell before running the LLM stage.
+- The LLM client now has a retry/backoff for 429/503 responses, and `build_eval_set` will skip files/items that trigger LLM errors rather than crash.
+
+If you prefer a one-shot run, `build_eval_set` still reads PDFs directly, but separating preprocessing is recommended when PDF extraction is noisy.
 
 Ingest the PDFs into your FAISS index
 
 ```powershell
-python -m app.rag.ingest --path "$env:CACHE_PATH" --index-dir storage
+python -m app.rag.ingest --path "$env:CACHE_PATH" --preprocessed-dir data/preprocessed_pdf_texts --index-dir storage
 ```
 
 This creates:

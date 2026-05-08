@@ -113,9 +113,10 @@ def build_eval_set(
     max_pages_per_pdf: int = 8,
     sleep_s: float = 0.0,
     min_score: int = 4,
+    preprocessed_dir: str | None = None,
 ) -> dict[str, int]:
     """
-    Replicates the article's approach:
+    Build an evaluation set from a directory of text files.
       - Generate QA pairs with a specialized prompt
       - Critique with an LLM judge
       - Filter on high thresholds
@@ -138,20 +139,51 @@ def build_eval_set(
 
     with out.open("w", encoding="utf-8") as f:
         for pdf in tqdm(pdfs, desc="Generating eval QA"):
-            pages = _read_pdf_pages(pdf, max_pages=max_pages_per_pdf)
+            # If a preprocessed text file is available, use it instead of re-reading the PDF.
+            pages: list[str]
+            if preprocessed_dir:
+                pre_path = Path(preprocessed_dir) / f"{pdf.stem}.txt"
+                if pre_path.exists():
+                    try:
+                        raw = pre_path.read_text(encoding="utf-8")
+                        # Expecting files written as: PAGE_1:\n<text>\n\nPAGE_2:\n<text>...\n
+                        parts = []
+                        cur = []
+                        for line in raw.splitlines():
+                            if line.startswith("PAGE_") and cur:
+                                parts.append("\n".join(cur).strip())
+                                cur = []
+                                # skip the PAGE_ header line; the next lines are page text
+                                continue
+                            cur.append(line)
+                        if cur:
+                            parts.append("\n".join(cur).strip())
+                        pages = parts[:max_pages_per_pdf]
+                    except Exception as e:  # noqa: BLE001
+                        log.warning("Failed to read preprocessed file %s: %s", pre_path, e)
+                        pages = _read_pdf_pages(pdf, max_pages=max_pages_per_pdf)
+                else:
+                    pages = _read_pdf_pages(pdf, max_pages=max_pages_per_pdf)
+            else:
+                pages = _read_pdf_pages(pdf, max_pages=max_pages_per_pdf)
             context_pages = [p for p in pages if p]
             if len(" ".join(context_pages)) < 400:
                 continue
 
             passage = "\n\n".join([f"PAGE_{i+1}:\n{t}" for i, t in enumerate(pages)])
 
-            qa = _llm_json(
-                llm,
-                [
-                    {"role": "system", "content": "You generate evaluation QA pairs for a RAG system. Output ONLY valid JSON."},
-                    {"role": "user", "content": QA_PROMPT.format(N_GENERATIONS=n_generations_per_file) + passage},
-                ],
-            )
+            try:
+                qa = _llm_json(
+                    llm,
+                    [
+                        {"role": "system", "content": "You generate evaluation QA pairs for a RAG system. Output ONLY valid JSON."},
+                        {"role": "user", "content": QA_PROMPT.format(N_GENERATIONS=n_generations_per_file) + passage},
+                    ],
+                )
+            except Exception as e:  # noqa: BLE001
+                log.warning("LLM generation failed for %s: %s", pdf.name, e)
+                # Skip this PDF on any LLM error so we don't waste quota on problematic files
+                continue
             if not isinstance(qa, list):
                 continue
 
@@ -166,22 +198,27 @@ def build_eval_set(
 
                 total += 1
 
-                critique = _llm_json(
-                    llm,
-                    [
-                        {"role": "system", "content": "You are a strict evaluator. Output ONLY valid JSON."},
-                        {
-                            "role": "user",
-                            "content": (
-                                CRITIQUE_PROMPT
-                                + f"\nQuestion:\n{q}\n\n"
-                                + "Context pages (ordered):\n"
-                                + "\n\n".join([f"PAGE_{i+1}:\n{t}" for i, t in enumerate(pages)])
-                                + f"\n\nAnswer:\n{a}\n\npage_no:\n{page_no}\n"
-                            ),
-                        },
-                    ],
-                )
+                try:
+                    critique = _llm_json(
+                        llm,
+                        [
+                            {"role": "system", "content": "You are a strict evaluator. Output ONLY valid JSON."},
+                            {
+                                "role": "user",
+                                "content": (
+                                    CRITIQUE_PROMPT
+                                    + f"\nQuestion:\n{q}\n\n"
+                                    + "Context pages (ordered):\n"
+                                    + "\n\n".join([f"PAGE_{i+1}:\n{t}" for i, t in enumerate(pages)])
+                                    + f"\n\nAnswer:\n{a}\n\npage_no:\n{page_no}\n"
+                                ),
+                            },
+                        ],
+                    )
+                except Exception as e:  # noqa: BLE001
+                    log.warning("LLM critique failed for %s question=%s: %s", pdf.name, q, e)
+                    # Treat as an unusable item; continue with next item
+                    continue
                 # Some models / JSON repair paths may return a list wrapper; normalize to a dict.
                 if isinstance(critique, list):
                     critique = next((x for x in critique if isinstance(x, dict)), {})
@@ -237,6 +274,7 @@ def main() -> None:
     p.add_argument("--max-pages", type=int, default=8)
     p.add_argument("--sleep-s", type=float, default=0.0)
     p.add_argument("--min-score", type=int, default=4)
+    p.add_argument("--preprocessed-dir", default=None, help="Directory with pre-extracted .txt files (one per PDF)")
     args = p.parse_args()
 
     build_eval_set(
@@ -247,6 +285,7 @@ def main() -> None:
         max_pages_per_pdf=args.max_pages,
         sleep_s=args.sleep_s,
         min_score=args.min_score,
+        preprocessed_dir=args.preprocessed_dir,
     )
 
 
